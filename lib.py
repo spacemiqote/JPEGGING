@@ -141,8 +141,8 @@ def reshape_for_compression(ycbcr, block_size):
     return reshaped_blocks
 
 def calculate_mse_psnr(img_path1, img_path2):
-    img1 = np.array(Image.open(img_path1))
-    img2 = np.array(Image.open(img_path2))
+    img1 = np.array(Image.open(img_path1).convert('L'))
+    img2 = np.array(Image.open(img_path2).convert('L'))
 
     mse = np.mean((img1 - img2) ** 2)
     if mse == 0:

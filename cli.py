@@ -80,7 +80,12 @@ class CLI:
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
         if log_to_file:
-            file_handler = logging.FileHandler(f"{input_file}量化等級{quality}.log", mode='w', encoding='utf-8')
+            script_dir = os.path.dirname(os.path.realpath(__file__))
+            log_dir = os.path.join(script_dir, 'log')
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+            log_file_path = os.path.join(log_dir, f"{os.path.basename(input_file)}量化等級{quality}.log")
+            file_handler = logging.FileHandler(log_file_path, mode='w', encoding='utf-8')
             file_handler.setLevel(logging.INFO)
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
@@ -96,8 +101,8 @@ class CLI:
                 raise ArgumentParserError("需要以下參數: -o/--output")
             QUANTIZATION_LEVEL = args.quality
             input_file = args.input
+            image_name = os.path.basename(input_file)
             output_file = args.output
-            logger = self.setup_logger(input_file, quality = QUANTIZATION_LEVEL)
             q55_l,q55_c = quantization_matrix(QUANTIZATION_LEVEL)
             zig_8x8 = generate_zigzag_pattern(8, 8)
             dcLHT, acLHT, dcCHT, acCHT = buildHT(ht_default, param='encode')
@@ -108,6 +113,7 @@ class CLI:
                     'ac1': acCHT
                 }
             logger = self.setup_logger(input_file, log_to_file=True, quality = QUANTIZATION_LEVEL)
+            script_dir = os.path.dirname(os.path.realpath(__file__))
             start_time = timeit.default_timer()
             if not args.decode:
                 img, height, width, new_height, new_width = load_image(input_file)
@@ -119,9 +125,11 @@ class CLI:
                 del dac_merge
                 logger.debug(f"釋出CSf記憶體")
                 logger.info("完成處理。")
-                current_directory = os.getcwd()
-                bin_name = f"高{height}-寬{width}-量化等級{QUANTIZATION_LEVEL}.bin"
-                file_path = os.path.join(current_directory, bin_name)
+                bin_dir = os.path.join(script_dir, 'bin')
+                if not os.path.exists(bin_dir):
+                    os.makedirs(bin_dir)
+                bin_name = f"{image_name}-量化等級{QUANTIZATION_LEVEL}.bin"
+                file_path = os.path.join(bin_dir, bin_name)
                 with open(file_path, 'wb') as file:
                     file.write(byte_array) 
                 logger.info(f"{bin_name} 寫入完成。")
@@ -134,7 +142,7 @@ class CLI:
                 dac_length = len(dac_merge_r)
                 logger.info("完成載入。")
                 file_name = output_file
-                file_path = os.path.join(current_directory, file_name)
+                file_path = os.path.join(os.getcwd(), file_name)
                 logger.info("--- 對量化表進行Zigzag排序 ---")
                 logger.info("進行中...")
                 q55l = zigzag(np.array([q55_l]), zig_8x8)

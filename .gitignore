@@ -1,0 +1,10 @@
+
+__pycache__/
+
+bin/
+
+log/
+
+result/
+
+測試結果.txt
