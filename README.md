@@ -17,12 +17,22 @@
                         __輸出圖片名稱路徑(預設為當前目錄)__  
   -q QUALITY, --quality QUALITY  
                         __品質參數，越高越好 (1-100), 預設=55__  
-  -d, --decode          __解壓模式(限定輸入為此程式壓縮過的JFIF格式)__  
+  -d, --decode          __解壓模式(限定輸入為此程式壓縮過的JFIF格式)__
+
+__burst.py用於測試放置於val2017文件夾內的圖片__   
+`python burst.py -n 測試圖片數量[-a 為全部] [-q 品質參數範圍]`  
+> 設定:  
+  -n NUMBER, 從文件夾提取的隨機數量的圖片用於測試  
+  -a, 從文件夾提取全部的圖片用於測試  
+  -q Q_start Q_end, 品質參數範圍(可同值)  
+                        __品質參數範圍 ex:-q 1 100__  
 
 ## 說明與範例指令:
 * python cli.py -i input.bmp -o output.jpg
 * python cli.py -i input.bmp -o output.jpg -q 69
 * python cli.py -i compressed.jpg -o result.jpg --decode
+* python burst.py -n 10 -q 55 55
+* python burst.py -a -q 1 100
 
   在解壓模式(--decode)下，限定輸入為本程式壓縮過的JFIF格式。  
   解壓模式讀取了本程式所壓縮的JFIF格式，並且提取其量化表與霍夫曼表進行重建。  
