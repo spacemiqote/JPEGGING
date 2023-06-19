@@ -109,7 +109,7 @@ class CLI:
             logger = self.setup_logger(input_file, log_to_file=True, quality = QUANTIZATION_LEVEL)
             if not args.decode:
                 img, height, width, new_height, new_width = load_image(input_file)
-                dac_merge, block_counts = generate_dac_merge(img, q55_l, q55_c, dcLHT, dcCHT, acLHT, acCHT, logger)
+                dac_merge, block_counts = generate_dac_merge(img, q55_l, q55_c, default_huffs, logger)
                 original_dac_length = len(dac_merge)
                 logger.info("--- CSf轉位元組陣列 ---")
                 logger.info("進行中...")
@@ -148,8 +148,11 @@ class CLI:
                     if class_id not in image_dict['huff_tables']:
                         logger.warning(f"無法找到 {class_id} 的霍夫曼表，將使用預設霍夫曼表。")
                         image_dict['huffs'][class_id] = default_huffs[class_id]
-                qqll = image_dict['qq'][0]
-                qqcc = image_dict['qq'][1]
+                try:
+                    qqll = image_dict['qq'][0]
+                    qqcc = image_dict['qq'][1]
+                except (KeyError, IndexError):
+                    qqll, qqcc = quantization_matrix()
                 logger.info(f"圖像高度: {image_dict['h']}")
                 logger.info(f"圖像寬度: {image_dict['w']}")
                 qqll = zigzag(np.array([qqll]), zig_8x8, inverse=True)[0]
@@ -159,9 +162,15 @@ class CLI:
                 block_counts = new_h * new_w // 64
                 logger.info("--- 對CSf進行霍夫曼解碼 ---")
                 logger.info("進行中...")
-                t_dc_y_dr, t_ac_y_dr, t_dc_cb_dr, t_ac_cb_dr, t_dc_cr_dr, t_ac_cr_dr = decoding(image_dict['dac'], image_dict['huff_tables']["dc0"], image_dict['huff_tables']["ac0"], image_dict['huff_tables']["dc1"], image_dict['huff_tables']["ac1"], logger)
-                image_dict['dac'] = None
+                dct_data = decoding(image_dict['dac'], image_dict['huff_tables'])
+                t_dc_y_dr = dct_data['y']['dc']
+                t_ac_y_dr = dct_data['y']['ac']
+                t_dc_cb_dr = dct_data['cb']['dc']
+                t_ac_cb_dr = dct_data['cb']['ac']
+                t_dc_cr_dr = dct_data['cr']['dc']
+                t_ac_cr_dr = dct_data['cr']['ac']
                 logger.debug("清空CSf記憶體")
+                image_dict['dac'] = None
                 for i in range(len(t_dc_y_dr)):
                     if t_dc_y_dr[i] is None:
                         t_dc_y_dr[i] = 0
@@ -248,10 +257,16 @@ class CLI:
                 t_ac_cr_dr_z_q = quantize(t_ac_cr_dr_z, qqcc, True)
                 logger.debug("釋放Zigzag排序的紅色彩度記憶體")
                 del t_ac_cr_dr_z
+                logger.debug("釋放離散餘弦計算的記憶體")
+                del dct_data
                 logger.info("完成處理。")
                 logger.info("--- 逆向離散餘弦轉換 ---")
                 logger.info("進行中...")
                 t_ycbcr_idct = apply_dct_to_ycbcr([t_ac_y_dr_z_q, t_ac_cb_dr_z_q, t_ac_cr_dr_z_q], inverse=True)
+                logger.info("釋放逆向量化的記憶體")
+                del t_ac_y_dr_z_q
+                del t_ac_cb_dr_z_q
+                del t_ac_cr_dr_z_q
                 logger.info("完成處理。")
                 logger.info("--- 重塑圖像 ---")
                 logger.info("進行中...")
@@ -267,7 +282,8 @@ class CLI:
                 logger.info("完成處理。")
                 for key, table in image_dict['huff_tables'].items():
                     image_dict['huff_tables'][key] = {value: k for k, value in table.items()}
-                ckp, block_counts = generate_dac_merge(img_rgb, qqll, qqcc, image_dict['huff_tables']["dc0"], image_dict['huff_tables']["dc1"], image_dict['huff_tables']["ac0"], image_dict['huff_tables']["ac1"], logger)
+                ckp, block_counts = generate_dac_merge(img_rgb, qqll, qqcc, image_dict['huff_tables'], logger)
+                
                 qqll = zigzag(np.array([qqll]), zig_8x8)[0]
                 qqcc = zigzag(np.array([qqcc]), zig_8x8)[0]
                 image_dict['qq'] = [qqll, qqcc]

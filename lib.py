@@ -1,10 +1,9 @@
-
 import numpy as np
 from scipy.fftpack import dctn, idctn
 import struct
+from io import BytesIO
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = False
-import re
 
 RGB_TO_YCBCR = np.array(
     [[0.299, 0.587, 0.114], [-0.169, -0.331, 0.500], [0.500, -0.419, -0.081]]
@@ -297,7 +296,11 @@ def save_image(dac, h, w, ql, qc, outfilename, htt):
 
 def write_image(image_dict, outfilename):
     with open(outfilename, 'wb') as f:
-        f.write(b'\xff\xd8') 
+        f.write(b'\xff\xd8')
+        if 'appn_data' in image_dict:
+            f.write(b'\xff\xe1') 
+            f.write(len(image_dict['appn_data']).to_bytes(2, byteorder='big')) 
+            f.write(image_dict['appn_data'])
         f.write(b'\xff\xe0')
         f.write(image_dict['soi_length'].to_bytes(2, byteorder='big'))
         f.write(b'JFIF\x00')  
@@ -341,76 +344,87 @@ def write_image(image_dict, outfilename):
         f.write(image_dict['end_of_spectral'].to_bytes(1, byteorder='big')) 
         f.write(image_dict['successive_approximation'].to_bytes(1, byteorder='big'))
         f.write(bytearray.fromhex(byte_stuffing(bin2hex(image_dict['dac']))))
+        if 'additional_frames' in image_dict:
+            raise ValueError('多幀圖片不支援')
         f.write(b'\xff\xd9')
+
+def handle_app_n(f):
+    length = int.from_bytes(f.read(2), 'big') - 2
+    data = f.read(length)
+    return data
 
 def load_jfif(infilename, logger):
     image_dict={}
     huff_tables = {"dc0": {}, "ac0": {}, "dc1": {}, "ac1": {}}
     image_dict['qq'] = []
     image_dict['components'] = []
-
     with open(infilename, 'rb') as f:
-        assert f.read(2) == b'\xff\xd8'
+        data = BytesIO(f.read())
+        assert data.read(2) == b'\xff\xd8'
         logger.info(f"完成讀取Start of Image")
         while True:
-            marker = f.read(2)
-            if marker == b'\xff\xe0':
-                image_dict['soi_length'] = int.from_bytes(f.read(2), 'big')
-                if image_dict['soi_length'] < 2:
-                    raise ValueError('Application-specific長度異常')
-                identifier = f.read(5)
-                if identifier == b'JFIF\x00':
-                    image_dict['jfif_version'] = f.read(2)
-                    image_dict['units'] = int.from_bytes(f.read(1), 'big')
-                    image_dict['x_density'] = int.from_bytes(f.read(2), 'big')
-                    image_dict['y_density'] = int.from_bytes(f.read(2), 'big')
-                    image_dict['thumbnail_width'] = int.from_bytes(f.read(1), 'big')
-                    image_dict['thumbnail_height'] = int.from_bytes(f.read(1), 'big')
-                    if image_dict['thumbnail_width'] > 0 and image_dict['thumbnail_height'] > 0:
-                        image_dict['thumbnail'] = f.read(image_dict['thumbnail_width'] * image_dict['thumbnail_height'] * 3) 
-                    else:
-                        image_dict['thumbnail'] = None
-                    logger.info(f"JFIF 版本: {image_dict['jfif_version']}")
-                    logger.info(f"密度單位: {image_dict['units']}")
-                    logger.info(f"水平像素密度: {image_dict['x_density']}")
-                    logger.info(f"垂直像素密度: {image_dict['y_density']}")
-                    logger.info(f"嵌入的RGB縮圖的水平像素數: {image_dict['thumbnail_width']}")
-                    logger.info(f"嵌入的RGB縮圖的垂直像素數: {image_dict['thumbnail_height']}")
-                    logger.info(f"縮圖資料: {0 if image_dict['thumbnail'] is None else image_dict['thumbnail']}")
-                logger.info(f"完成讀取Application-specific")
+            marker = data.read(2)
+            if b'\xff\xe0' <= marker <= b'\xff\xef':  
+                if marker == b'\xff\xe0':
+                    image_dict['soi_length'] = int.from_bytes(data.read(2), 'big')
+                    if image_dict['soi_length'] < 2:
+                        raise ValueError('Application-specific長度異常')
+                    identifier = data.read(5)
+                    if identifier == b'JFIF\x00':
+                        image_dict['jfif_version'] = data.read(2)
+                        image_dict['units'] = int.from_bytes(data.read(1), 'big')
+                        image_dict['x_density'] = int.from_bytes(data.read(2), 'big')
+                        image_dict['y_density'] = int.from_bytes(data.read(2), 'big')
+                        image_dict['thumbnail_width'] = int.from_bytes(data.read(1), 'big')
+                        image_dict['thumbnail_height'] = int.from_bytes(data.read(1), 'big')
+                        if image_dict['thumbnail_width'] > 0 and image_dict['thumbnail_height'] > 0:
+                            image_dict['thumbnail'] = data.read(image_dict['thumbnail_width'] * image_dict['thumbnail_height'] * 3) 
+                        else:
+                            image_dict['thumbnail'] = None
+                        logger.info(f"JFIF 版本: {image_dict['jfif_version']}")
+                        logger.info(f"密度單位: {image_dict['units']}")
+                        logger.info(f"水平像素密度: {image_dict['x_density']}")
+                        logger.info(f"垂直像素密度: {image_dict['y_density']}")
+                        logger.info(f"嵌入的RGB縮圖的水平像素數: {image_dict['thumbnail_width']}")
+                        logger.info(f"嵌入的RGB縮圖的垂直像素數: {image_dict['thumbnail_height']}")
+                        logger.info(f"縮圖資料: {0 if image_dict['thumbnail'] is None else image_dict['thumbnail']}")
+                    logger.info(f"完成讀取Application-specific")
+                else:
+                    image_dict['appn_data'] = handle_app_n(data)
+                    logger.info(f"完成讀取APPn段")
             elif marker == b'\xff\xc0': 
-                length = int.from_bytes(f.read(2), 'big')
+                length = int.from_bytes(data.read(2), 'big')
                 if length < 0:
                     raise ValueError('Start of Frame長度異常')
-                image_dict['sample_precision'] = int.from_bytes(f.read(1), 'big')
-                image_dict['h'] = int.from_bytes(f.read(2), 'big')
-                image_dict['w'] = int.from_bytes(f.read(2), 'big')
-                image_dict['num_components'] = int.from_bytes(f.read(1), 'big')
+                image_dict['sample_precision'] = int.from_bytes(data.read(1), 'big')
+                image_dict['h'] = int.from_bytes(data.read(2), 'big')
+                image_dict['w'] = int.from_bytes(data.read(2), 'big')
+                image_dict['num_components'] = int.from_bytes(data.read(1), 'big')
                 logger.info(f"精度: {image_dict['sample_precision']}")
                 logger.info(f"圖像的長度: {image_dict['h']}")
                 logger.info(f"圖像的寬度: {image_dict['w']}")
                 logger.info(f"顏色分量數: {image_dict['num_components']}")
                 for i in range(image_dict['num_components']):
-                    component_id = int.from_bytes(f.read(1), 'big')
-                    sampling_factors = int.from_bytes(f.read(1), 'big')
-                    q_table_number = int.from_bytes(f.read(1), 'big')
+                    component_id = int.from_bytes(data.read(1), 'big')
+                    sampling_factors = int.from_bytes(data.read(1), 'big')
+                    q_table_number = int.from_bytes(data.read(1), 'big')
                     image_dict['components'].append((component_id, sampling_factors, q_table_number))
                     logger.info(f"分量ID: {component_id}, 採樣因數: {sampling_factors}, 當前分量使用的量化表ID: {q_table_number}")
                 logger.info(f"完成讀取Start of Frame")
             elif marker == b'\xff\xdb': 
-                length = int.from_bytes(f.read(2), 'big') - 2
+                length = int.from_bytes(data.read(2), 'big') - 2
                 if length < 0:
                     raise ValueError('Define Quantization Table(s)長度異常')
                 while length > 0: 
-                    table_id, qtable = read_quantization_table(f)
+                    table_id, qtable = read_quantization_table(data)
                     length -= (64 if qtable.dtype == np.uint8 else 128) + 1
                     image_dict['qq'].append(qtable)
                     logger.info(f"完成讀取Define Quantization Table, id: {table_id}")
             elif marker == b'\xff\xc4': 
-                length = int.from_bytes(f.read(2), 'big')
+                length = int.from_bytes(data.read(2), 'big')
                 if length < 2:
                     raise ValueError('Define Huffman Table(s)長度異常')
-                table_class, table_id, table = read_huffman_table(f, length - 2, logger)
+                table_class, table_id, table = read_huffman_table(data, length - 2, logger)
                 if table_class == 0: 
                     if table_id == 0:
                         huff_tables["dc0"] = table
@@ -423,24 +437,31 @@ def load_jfif(infilename, logger):
                         huff_tables["ac1"] = table
                 logger.info(f"完成讀取Define Huffman Table(s)")
             elif marker == b'\xff\xda':
-                length = int.from_bytes(f.read(2), 'big')
+                length = int.from_bytes(data.read(2), 'big')
                 if length < 2:
                     raise ValueError('Start of Scan長度異常')
-                image_dict['sos_num_components'] = int.from_bytes(f.read(1), 'big')
+                image_dict['sos_num_components'] = int.from_bytes(data.read(1), 'big')
                 image_dict['sos_components'] = []
                 for _ in range(image_dict['sos_num_components']):
-                    component_id = int.from_bytes(f.read(1), 'big')
-                    huffman_table = int.from_bytes(f.read(1), 'big')
+                    component_id = int.from_bytes(data.read(1), 'big')
+                    huffman_table = int.from_bytes(data.read(1), 'big')
                     image_dict['sos_components'].append((component_id, huffman_table))
-                image_dict['start_of_spectral'] = int.from_bytes(f.read(1), 'big')
-                image_dict['end_of_spectral'] = int.from_bytes(f.read(1), 'big')
-                image_dict['successive_approximation'] = int.from_bytes(f.read(1), 'big')
+                image_dict['start_of_spectral'] = int.from_bytes(data.read(1), 'big')
+                image_dict['end_of_spectral'] = int.from_bytes(data.read(1), 'big')
+                image_dict['successive_approximation'] = int.from_bytes(data.read(1), 'big')
                 logger.info(f"顏色分量數: {image_dict['sos_num_components']}. 顏色分量資訊: {image_dict['sos_components']}")
                 logger.info(f"譜選擇開始: {image_dict['start_of_spectral']}. 譜選擇結束: {image_dict['end_of_spectral']}. 譜選擇: {image_dict['successive_approximation']}")
-                dac = read_data_until_terminator(f, logger)
+                logger.info(f"開始讀取CSf編碼資料")
+                dac = read_data_until_terminator(data, logger)
                 logger.info(f"完成讀取Star of Scan")
                 image_dict['dac'] = dac
                 break
+            elif marker == b'\xff\xd8':
+                raise ValueError('多幀圖片不支援')
+            else:
+                logger.warning(f"未知標記: {marker}, 跳過內容")
+                length = int.from_bytes(data.read(2), 'big') - 2
+                _ = data.read(length)
         image_dict['huff_tables'] = huff_tables
     return image_dict
 
@@ -484,9 +505,14 @@ def zigzag(array_3d, zigzag_pattern, inverse=False):
     return transformed_array
 
 def quantize(dct_array, quantization_table, reverse = False):
-    if reverse:
-        return np.array([np.round(layer * quantization_table).astype(int) for layer in dct_array])
-    return np.array([np.round(layer / quantization_table).astype(int) for layer in dct_array])
+    if np.all(quantization_table == 1):
+        return np.array([np.round(layer).astype(int) for layer in dct_array])
+    else:
+        if reverse:
+            return np.array([np.round(layer * quantization_table).astype(int) for layer in dct_array])
+        else:
+            return np.array([np.round(layer / quantization_table).astype(int) for layer in dct_array])
+
 
 def apply_dct_to_ycbcr(ycbcr, inverse=False):
     ycbcr_transformed = []
@@ -551,7 +577,11 @@ def byte_destuffing(hex_digits):
             i += 2
     return ''.join(result)
 
-def generate_dac_merge(img, q55_l, q55_c, dcLHT, dcCHT, acLHT, acCHT, logger):
+def generate_dac_merge(img, q55_l, q55_c, huff_tables, logger):
+    dcLHT = huff_tables["dc0"]
+    dcCHT = huff_tables["dc1"]
+    acLHT = huff_tables["ac0"]
+    acCHT = huff_tables["ac1"]
     zig_8x8 = generate_zigzag_pattern(8, 8)
     logger.info("--- 加載圖片中---")
     logger.info("載入中...")
@@ -661,17 +691,19 @@ def generate_dac_merge(img, q55_l, q55_c, dcLHT, dcCHT, acLHT, acCHT, logger):
     logger.info("完成處理。")
     return dac_merge, block_counts
 
-def read_data_until_terminator(f, logger):
-    data = ""
+def read_data_until_terminator(bit_stream, logger):
+    logger.info("進行中...")
+    data = bytearray()
     while True:
-        byte = f.read(1)
-        data += format(byte[0], '08b')
-        if len(data) >= 16 and data[-16:-8] == '11111111' and data[-8:] != '00000000':
-            if data[-16:] == '1111111111011001':
-                logger.info("已讀取到End of Image")
-                return hex2bin(byte_destuffing(bin2hex(data[:-16])))
-        elif len(byte) == 0:
+        new_byte = bit_stream.read(1)
+        if len(new_byte) == 0:  # EOF
             raise EOFError('到達EOF，但是沒有找到下一個marker')
+        if len(data) > 0 and data[-1] == 0xFF and new_byte[0] != 0x00:
+            if data[-1] == 0xFF and new_byte[0] == 0xD9:
+                logger.info("已讀取到End of Image")
+                binary_data = ''.join([format(b, '08b') for b in data[:-1]])
+                return hex2bin(byte_destuffing(bin2hex(binary_data)))
+        data.extend(new_byte)
 
 def read_huffman_table(f, length, logger):
     table = {}
@@ -764,15 +796,17 @@ def reshape_for_decompression(reshaped_blocks, original_shape, block_size):
         ycbcr[:,:,i] = reshaped
     return ycbcr
 
-def decoding(binary_string, dcLHTd, acLHTd, dcCHTd, acCHTd, logger):
-    dc_y, ac_y, dc_cb, ac_cb, dc_cr, ac_cr = [], [], [], [], [], []
-    dc_tables = {'0': dcLHTd, '1': dcCHTd, '2': dcCHTd}
-    ac_tables = {'0': acLHTd, '1': acCHTd, '2': acCHTd}
+def decoding(binary_string, huff_tables):
+    color_channels = ['y', 'cb', 'cr']
+    dc_tables = {'y': huff_tables['dc0'], 'cb': huff_tables['dc1'], 'cr': huff_tables['dc1']}
+    ac_tables = {'y': huff_tables['ac0'], 'cb': huff_tables['ac1'], 'cr': huff_tables['ac1']}
+    dct_data = {channel: {'dc': [], 'ac': []} for channel in color_channels}
     bs_index = 0
     i = 0
     while bs_index < len(binary_string):
-        dc_table = dc_tables[str(i % 3)]
-        ac_table = ac_tables[str(i % 3)]
+        color_channel = color_channels[i % 3]
+        dc_table = dc_tables[color_channel]
+        ac_table = ac_tables[color_channel]
         huff_code = ''
         int_dc = None
         while bs_index < len(binary_string)and huff_code not in dc_table:
@@ -808,13 +842,13 @@ def decoding(binary_string, dcLHTd, acLHTd, dcCHTd, acCHTd, logger):
             if total_elements >= 64:
                 break
         if i % 3 == 0:
-            dc_y.append(int_dc)
-            ac_y.append(decoded_data)
+            dct_data['y']['dc'].append(int_dc)
+            dct_data['y']['ac'].append(decoded_data)
         elif i % 3 == 1:
-            dc_cb.append(int_dc)
-            ac_cb.append(decoded_data)
+            dct_data['cb']['dc'].append(int_dc)
+            dct_data['cb']['ac'].append(decoded_data)
         else:
-            dc_cr.append(int_dc)
-            ac_cr.append(decoded_data)
+            dct_data['cr']['dc'].append(int_dc)
+            dct_data['cr']['ac'].append(decoded_data)
         i += 1
-    return dc_y, ac_y, dc_cb, ac_cb, dc_cr, ac_cr
+    return dct_data
