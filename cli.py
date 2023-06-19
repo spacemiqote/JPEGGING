@@ -7,6 +7,7 @@ import argparse
 import mmap
 import struct
 import logging
+import timeit
 from lib import *
 
 class PreserveNewlineHelpFormatter(argparse.RawDescriptionHelpFormatter):
@@ -67,7 +68,7 @@ class CLI:
         parser.add_argument('-q', '--quality', type=int, default=55, help='品質參數，越高越好 (1-100), 預設=55')
         parser.add_argument('-d', '--decode', action='store_true', help='解壓模式(限定輸入為此程式壓縮過的JFIF格式)')
         return parser
-
+    
     def setup_logger(self, input_file, log_to_file=False, quality=55):
         logger = logging.getLogger(__name__)
         if logger.hasHandlers():
@@ -84,7 +85,7 @@ class CLI:
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
         return logger
-
+    
     def run(self):
         try:
             args = self.parser.parse_args()
@@ -107,6 +108,7 @@ class CLI:
                     'ac1': acCHT
                 }
             logger = self.setup_logger(input_file, log_to_file=True, quality = QUANTIZATION_LEVEL)
+            start_time = timeit.default_timer()
             if not args.decode:
                 img, height, width, new_height, new_width = load_image(input_file)
                 dac_merge, block_counts = generate_dac_merge(img, q55_l, q55_c, default_huffs, logger)
@@ -294,6 +296,8 @@ class CLI:
                 dac_length = len(image_dict['dac'])
             mse_value, psn_value = calculate_mse_psnr(input_file, output_file)
             logger.info("--- 完成資訊 ---")
+            elapsed = timeit.default_timer() - start_time
+            logger.info(f"總運算時間: {elapsed:.3f}秒")
             logger.info(f"輸入圖片: {input_file}")
             logger.info(f"輸出圖片: {output_file}")
             logger.info(f"處理的高度: {new_height}個像素")

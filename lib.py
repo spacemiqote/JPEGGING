@@ -5,6 +5,7 @@ from io import BytesIO
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = False
 
+
 RGB_TO_YCBCR = np.array(
     [[0.299, 0.587, 0.114], [-0.169, -0.331, 0.500], [0.500, -0.419, -0.081]]
 )
@@ -173,6 +174,7 @@ def quantization_matrix(quality=50):
     lumin = np.floor((std_lum * quality_scale + 50) / 100).clip(1, 255).astype(int)
     chrom = np.floor((std_chr * quality_scale + 50) / 100).clip(1, 255).astype(int)
     return lumin, chrom
+
 
 def convert_color_space(image, conversion_matrix):
     new_image = np.dot(image, conversion_matrix.T)
@@ -576,6 +578,7 @@ def byte_destuffing(hex_digits):
             result.append(chunk)
             i += 2
     return ''.join(result)
+
 
 def generate_dac_merge(img, q55_l, q55_c, huff_tables, logger):
     dcLHT = huff_tables["dc0"]
