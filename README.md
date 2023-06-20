@@ -65,3 +65,7 @@ $`\begin{align}
 C_{i} =& en_{dc}(\delta_{i}^{\bar{y}})\ |\ en_{ac}(r_{i,k}^{\bar{y}},a_{i,k}^{\bar{y}})\ |\ en_{dc}(\delta_{i}^{cb})\ |\ en_{ac}(r_{i,k}^{cb},a_{i,k}^{cb})\ |\ en_{dc}(\delta_{i}^{cr})\ |\ en_{ac}(r_{i,k}^{cr},a_{i,k}^{cr}) \\
 = & C_{i}^{\bar{y} D}\ |\ C_{i}^{\bar{y} A}\ |\ C_{i}^{cb D}\ |\ C_{i}^{cb A}\ |\ C_{i}^{cr D}\ |\ C_{i}^{cr A}
 \end{align}`$
+
+[![CodeScene Code Health](https://codescene.io/projects/40817/status-badges/code-health)](https://codescene.io/projects/40817)  
+[![CodeScene System Mastery](https://codescene.io/projects/40817/status-badges/system-mastery)](https://codescene.io/projects/40817)  
+[![CodeScene general](https://codescene.io/images/analyzed-by-codescene-badge.svg)](https://codescene.io/projects/40817)
