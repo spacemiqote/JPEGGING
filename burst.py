@@ -50,7 +50,7 @@ def test_compression(quality_range, num_images, all_images):
 
     with open("測試結果.txt", "w", encoding="utf-8") as output_file:
         for input_image, error_value, psnr_value, quality in results:
-            output = f'Image: {input_image}, 均方誤差: {error_value if error_value is not None else "N/A"}, 峰值訊噪比: {psnr_value if psnr_value is not None else "N/A"}, 量化等級: {quality}'
+            output = f'輸入圖片: {input_image}, 均方誤差: {error_value if error_value is not None else "N/A"}, 峰值訊噪比: {psnr_value if psnr_value is not None else "N/A"}, 量化等級: {quality}'
             print(output)
             print(output, file=output_file)
     print("測試檔案寫入完成：測試結果.txt")
